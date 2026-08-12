@@ -1,7 +1,6 @@
-from hub import light_matrix, port, motion_sensor, power_off
+from hub import light_matrix, port, motion_sensor
 import color_sensor
 import distance_sensor
-import hub
 import motor_pair
 import color
 import runloop
@@ -13,7 +12,7 @@ ultrassonico = port.C
 pelaEsquerda = 1
 pelaDireita = -1
 motor_pair.pair(motor_pair.PAIR_1,port.B,port.A)
-kP = 10
+kP = 8
 areaDeResgate = False
 acabou = False
 motion_sensor.set_yaw_face(motion_sensor.TOP)
@@ -30,7 +29,7 @@ async def foraDaAreaDeResgate():
     global acabou
     seguirLinha()
     #Função pra Parar
-    if color_sensor.color(sensorD)== color.RED or color_sensor.color(sensorE)== color.RED:
+    if color_sensor.color(sensorD) == color.RED or color_sensor.color(sensorE) == color.RED:
         motor_pair.stop(motor_pair.PAIR_1)
         acabou = True
         return
@@ -58,7 +57,7 @@ async def foraDaAreaDeResgate():
             await virarAEsquerda()
             return
     #Varredura
-    elif (refl(sensorE)< 25 or refl(sensorD)< 25) and abs(motion_sensor.tilt_angles()[1])<50 and abs(motion_sensor.tilt_angles()[2])<50:
+    elif (refl(sensorE)< 23 or refl(sensorD)< 23) and motion_sensor.tilt_angles()[1]<150:
         await varredura()
     seguirLinha()
     return
@@ -103,6 +102,7 @@ async def dentroDaAreaDeResgate():
             await runloop.sleep_ms(10)
             return
 
+
 def seguirLinha():
     #Atribuição de potência com base na diferença de reflexão entre os sensores
     light_matrix.show_image(light_matrix.IMAGE_ARROW_N)
@@ -115,8 +115,8 @@ def seguirLinha():
 async def varredura():
     light_matrix.show_image(light_matrix.IMAGE_CHESSBOARD)
     await motor_pair.move_tank_for_time(motor_pair.PAIR_1,300,300,100)
-    esqRefl = ehPreto(sensorE)
-    dirRefl = ehPreto(sensorD)
+    esqRefl = refl(sensorE)
+    dirRefl = refl(sensorD)
     #Ver se é uma intersecção, se sim passar direto
     motor_pair.move_tank(motor_pair.PAIR_1,300,300)
     await runloop.sleep_ms(400)
@@ -127,7 +127,7 @@ async def varredura():
         seguirLinha()
         return
 
-    if esqRefl:
+    if esqRefl<dirRefl:
         #Girar para a esquerda para procurar linha, se não for intersecção
         light_matrix.show_image(light_matrix.IMAGE_ARROW_W)
         motion_sensor.reset_yaw(0)
@@ -157,7 +157,7 @@ async def varredura():
             seguirLinha()
             return
 
-    elif dirRefl:
+    elif dirRefl<esqRefl:
         #Girar para a direita para procurar linha, se não houver na esquerda
         light_matrix.show_image(light_matrix.IMAGE_ARROW_E)
         motion_sensor.reset_yaw(0)
@@ -221,22 +221,22 @@ async def darAVolta(direcao: int):
     await runloop.sleep_ms(500)
     motion_sensor.reset_yaw(0)
     if direcao == pelaEsquerda:
-        motor_pair.move_tank(motor_pair.PAIR_1,170,450)
-        await runloop.until(lambda: color_sensor.color(sensorE)== color.BLACK)
+        motor_pair.move_tank(motor_pair.PAIR_1,160,450)
+        await runloop.until(lambda: ehPreto(sensorE))
         motion_sensor.reset_yaw(0)
         motor_pair.move_tank(motor_pair.PAIR_1,300,300)
-        await runloop.sleep_ms(600)
+        await runloop.sleep_ms(400)
         motor_pair.move_tank(motor_pair.PAIR_1,300,-300)
-        await runloop.until(lambda: verSeVirou(90) or color_sensor.color(sensorD)== color.BLACK)
+        await runloop.until(lambda: verSeVirou(90) or ehPreto(sensorD))
         motor_pair.move_tank(motor_pair.PAIR_1,-300,300)
     elif direcao == pelaDireita:
-        motor_pair.move_tank(motor_pair.PAIR_1,450,170)
-        await runloop.until(lambda: color_sensor.color(sensorD)== color.BLACK)
+        motor_pair.move_tank(motor_pair.PAIR_1,450,160)
+        await runloop.until(lambda: ehPreto(sensorD))
         motion_sensor.reset_yaw(0)
         motor_pair.move_tank(motor_pair.PAIR_1,300,300)
-        await runloop.sleep_ms(600)
+        await runloop.sleep_ms(400)
         motor_pair.move_tank(motor_pair.PAIR_1,-300,300)
-        await runloop.until(lambda: verSeVirou(-90) or color_sensor.color(sensorD)== color.BLACK)
+        await runloop.until(lambda: verSeVirou(-90) or ehPreto(sensorE))
         motor_pair.move_tank(motor_pair.PAIR_1,300,-300)
     await runloop.until(lambda: color_sensor.color(sensorE)==color_sensor.color(sensorD))
     return
@@ -245,10 +245,10 @@ async def becoSemSaida():
     motion_sensor.reset_yaw(0)
     motor_pair.move_tank(motor_pair.PAIR_1,300,-300)
     await runloop.until(lambda: verSeVirou(120))
-    await runloop.until(lambda: color_sensor.color(sensorD) == color.BLACK)
+    await runloop.until(lambda: ehPreto(sensorD))
     await motor_pair.move_tank_for_time(motor_pair.PAIR_1,100,100,200)
     motor_pair.move_tank(motor_pair.PAIR_1,-200,200)
-    await runloop.until(lambda: color_sensor.reflection(sensorD)==color_sensor.reflection(sensorE))
+    await runloop.until(lambda: refl(sensorD) == refl(sensorE))
     seguirLinha()
     return
 
@@ -258,9 +258,9 @@ async def virarADireita():
     motion_sensor.reset_yaw(0)
     motor_pair.move_tank(motor_pair.PAIR_1,-150,300)
     await runloop.until(lambda: verSeVirou(-45))
-    await runloop.until(lambda: verSeVirou(-90) or color_sensor.color(sensorE)== color.BLACK)
+    await runloop.until(lambda: verSeVirou(-90) or ehPreto(sensorE))
     motor_pair.move_tank(motor_pair.PAIR_1,300,-300)
-    await runloop.until(lambda: color_sensor.reflection(sensorD)==color_sensor.reflection(sensorE))
+    await runloop.until(lambda: refl(sensorD) == refl(sensorE))
     seguirLinha()
     return
 
@@ -270,10 +270,11 @@ async def virarAEsquerda():
     motion_sensor.reset_yaw(0)
     motor_pair.move_tank(motor_pair.PAIR_1,300,-150)
     await runloop.until(lambda: verSeVirou(45))
-    await runloop.until(lambda: verSeVirou(90) or color_sensor.color(sensorD)== color.BLACK)
+    await runloop.until(lambda: verSeVirou(90) or ehPreto(sensorD))
     motor_pair.move_tank(motor_pair.PAIR_1,-300,300)
-    await runloop.until(lambda: color_sensor.reflection(sensorD)==color_sensor.reflection(sensorE))
+    await runloop.until(lambda: refl(sensorD) == refl(sensorE))
     seguirLinha()
     return
+
 #PARTE MAIS IMPORTANTE DO CÓDIGO !!!
 runloop.run(main())
