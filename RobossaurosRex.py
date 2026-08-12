@@ -5,7 +5,7 @@ import motor_pair
 import color
 import runloop
 
-#constantes e coisas a serem declaradas
+#Constantes e coisas a serem declaradas
 sensorD = port.F
 sensorE = port.E
 ultrassonico = port.C
