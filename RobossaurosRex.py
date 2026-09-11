@@ -1,4 +1,4 @@
-from hub import light_matrix, port, motion_sensor
+from hub import light_matrix, port, motion_sensor, sound
 import color_sensor
 import distance_sensor
 import motor_pair
@@ -18,16 +18,24 @@ motor_pair.pair(motor_pair.PAIR_1,port.B,port.A)
 kP = 16
 areaDeResgate = False
 acabou = False
-entrou = False
 motion_sensor.set_yaw_face(motion_sensor.TOP)
 
 async def main():
+    i = 50
+    contador = 0
+    global areaDeResgate
+
     while not acabou:
-        global areaDeResgate
+        if contador > 350:
+            i = -i
+            contador = 0
+        contador += 1
         if not areaDeResgate and not acabou:
+            distance_sensor.show(ultrassonico, [50+i,50-i,50-i,50+i])
             await foraDaAreaDeResgate()
             continue
         if areaDeResgate and not acabou:
+            distance_sensor.show(ultrassonico, [50+i,50+i,50-i,50-i])
             await dentroDaAreaDeResgate()
             continue
 async def foraDaAreaDeResgate():
@@ -49,11 +57,14 @@ async def foraDaAreaDeResgate():
         motor_pair.stop(motor_pair.PAIR_1)
         await runloop.sleep_ms(300)
         areaDeResgate = True
+        light_matrix.show_image(light_matrix.IMAGE_GO_UP)
+        await motor_pair.move_tank_for_degrees(motor_pair.PAIR_1,400,velBase,velBase)
         return
 
     seguirLinha()
     #Função pra Parar
     if color_sensor.color(sensorD) == color.RED or color_sensor.color(sensorE) == color.RED:
+        distance_sensor.clear(ultrassonico)
         motor_pair.stop(motor_pair.PAIR_1)
         acabou = True
         return
@@ -67,6 +78,7 @@ async def foraDaAreaDeResgate():
     #Intersecção e/ou Beco Sem Saída
     if ehVerde(sensorD) or ehVerde(sensorE):
         light_matrix.show_image(light_matrix.IMAGE_TARGET)
+        distance_sensor.clear(ultrassonico)
         motor_pair.move_tank(motor_pair.PAIR_1,velDevagar,velDevagar)
         await runloop.sleep_ms(100)
         motor_pair.stop(motor_pair.PAIR_1)
@@ -85,7 +97,7 @@ async def foraDaAreaDeResgate():
     seguirLinha()
     #Varredura
     if (refl(sensorE)< 25 or refl(sensorD)< 25) and abs(motion_sensor.tilt_angles()[1])<15 and abs(motion_sensor.tilt_angles()[2])<15:
-        await varredura()
+        await buscaBusca()
     seguirLinha()
     return
 
@@ -107,29 +119,29 @@ async def dentroDaAreaDeResgate():
         #contornar o ladrilho a frente
         light_matrix.show_image(light_matrix.IMAGE_GO_RIGHT)
         await girarAngulo(-85)
-        await motor_pair.move_tank_for_degrees(motor_pair.PAIR_1,1200,velBase,velBase)
+        await motor_pair.move_tank_for_degrees(motor_pair.PAIR_1,1100,velBase,velBase)
         light_matrix.show_image(light_matrix.IMAGE_GO_LEFT)
-        await girarAngulo(85)
+        await girarAngulo(88)
         await motor_pair.move_tank_for_degrees(motor_pair.PAIR_1,1000,velBase,velBase)
         distanciaFrente = distancia(ultrassonico) if distancia(ultrassonico) > 0 else 1000
         distanciaLateral = distancia(lateral) if distancia(lateral) > 0 else 1000
         #se não houver nada à frente, achou a saída e deve seguir
-        if distanciaFrente > 100:
+        if distanciaFrente > 150:
             light_matrix.show_image(light_matrix.IMAGE_GO_UP)
             motor_pair.move_tank(motor_pair.PAIR_1,velBase,velBase)
             await runloop.until(lambda: ehPreto(sensorD) and ehPreto(sensorE))
             return
         #se houver parede à frente e não houver parede à esquerda do ladrilho contornado, vira e segue
-        elif distanciaFrente < 100 and distanciaLateral > 380:
+        elif distanciaFrente < 150 and distanciaLateral > 420:
             light_matrix.show_image(light_matrix.IMAGE_GO_LEFT)
-            await girarAngulo(85)
+            await girarAngulo(88)
             motor_pair.move_tank(motor_pair.PAIR_1,velBase,velBase)
             await runloop.until(lambda: ehPreto(sensorD) and ehPreto(sensorE))
             return
         #se houver parede tanto à frente quanto à esquerda do ladrilho contornado, vira à direita e continua seguindo a parede
-        elif distanciaFrente < 100 and distanciaLateral < 380:
+        elif distanciaFrente < 150 and distanciaLateral < 420:
             light_matrix.show_image(light_matrix.IMAGE_GO_RIGHT)
-            await girarAngulo(-85)
+            await girarAngulo(-84)
             motor_pair.move_tank(motor_pair.PAIR_1,velBase,velBase)
             return
     #se não houver parede à frente e houver parede à esquerda:
@@ -142,7 +154,7 @@ async def dentroDaAreaDeResgate():
     elif distanciaFrente < 150 and distanciaLateral > 150:
         #gira para a direita e segue
         light_matrix.show_image(light_matrix.IMAGE_GO_RIGHT)
-        await girarAngulo(-85)
+        await girarAngulo(-83)
         motor_pair.move_tank(motor_pair.PAIR_1,velBase,velBase)
         return
     #se não houver nada à frente nem à esquerda:
@@ -151,9 +163,9 @@ async def dentroDaAreaDeResgate():
         await motor_pair.move_tank_for_degrees(motor_pair.PAIR_1,300, velBase,velBase)
         #virar à esquerda e segue
         light_matrix.show_image(light_matrix.IMAGE_GO_LEFT)
-        await girarAngulo(88)
+        await girarAngulo(85)
         motor_pair.move_tank(motor_pair.PAIR_1,velBase,velBase)
-        await runloop.until(lambda: ehPreto(sensorD) or ehPreto(sensorE) or distancia(ultrassonico) < 120)
+        await runloop.until(lambda: ehPreto(sensorD) or ehPreto(sensorE) or distancia(ultrassonico) < 500)
         return
 
 
@@ -173,7 +185,8 @@ async def girarAngulo(ang: int):
         int(velBase*((abs(motion_sensor.tilt_angles()[0]/10-ang)+30)/ang)),
         int(-velBase*((abs(motion_sensor.tilt_angles()[0]/10-ang)+30)/ang)))
 
-async def varredura():
+async def buscaBusca():
+    distance_sensor.clear(ultrassonico)
     light_matrix.show_image(light_matrix.IMAGE_CHESSBOARD)
     await motor_pair.move_tank_for_time(motor_pair.PAIR_1,velBase,velBase,100)
     #Conserva os valores de reflexão de ambos os sensores
@@ -194,6 +207,7 @@ async def varredura():
         light_matrix.show_image(light_matrix.IMAGE_ARROW_W)
         motion_sensor.reset_yaw(0)
         motor_pair.move_tank(motor_pair.PAIR_1,velBase,-velBase)
+        darSeta(pelaEsquerda)
         await runloop.sleep_ms(10)
         await runloop.until(lambda: ehPreto(sensorD) or verSeVirou(88))
         motor_pair.stop(motor_pair.PAIR_1)
@@ -208,6 +222,7 @@ async def varredura():
         light_matrix.show_image(light_matrix.IMAGE_ARROW_E)
         motion_sensor.reset_yaw(0)
         motor_pair.move_tank(motor_pair.PAIR_1, -velBase, velBase)
+        darSeta(pelaDireita)
         await runloop.sleep_ms(10)
         await runloop.until(lambda: verSeVirou(-175) or ehPreto(sensorE))
         motor_pair.stop(motor_pair.PAIR_1)
@@ -224,6 +239,7 @@ async def varredura():
         light_matrix.show_image(light_matrix.IMAGE_ARROW_E)
         motion_sensor.reset_yaw(0)
         motor_pair.move_tank(motor_pair.PAIR_1, -velBase, velBase)
+        darSeta(pelaDireita)
         await runloop.sleep_ms(10)
         await runloop.until(lambda: ehPreto(sensorE) or verSeVirou(-88))
         motor_pair.stop(motor_pair.PAIR_1)
@@ -239,6 +255,7 @@ async def varredura():
         light_matrix.show_image(light_matrix.IMAGE_ARROW_W)
         motion_sensor.reset_yaw(0)
         motor_pair.move_tank(motor_pair.PAIR_1,velBase,-velBase)
+        darSeta(pelaDireita)
         await runloop.sleep_ms(10)
         await runloop.until(lambda: verSeVirou(175) or ehPreto(sensorD))
         motor_pair.stop(motor_pair.PAIR_1)
@@ -284,6 +301,7 @@ def distancia(sensor: int):
 
 # resolver o obstáculo
 async def darAVolta(direcao: int):
+    distance_sensor.clear(ultrassonico)
     #volta um pouco pra trás para ajustar a posição
     light_matrix.show_image(light_matrix.IMAGE_GHOST)
     motor_pair.move_tank(motor_pair.PAIR_1,-velDevagar,-velDevagar)
@@ -292,8 +310,8 @@ async def darAVolta(direcao: int):
     motion_sensor.reset_yaw(0)
     await runloop.sleep_ms(10)
     #vira para um dos lados dependendo da direção fornecida
-    motor_pair.move_tank(motor_pair.PAIR_1,velBase*direcao,-velBase*direcao)
-    await runloop.until(lambda: verSeVirou(88*direcao))
+    darSeta(-direcao)
+    await girarAngulo(85*direcao)
     #anda um pouco pra frente para ajustar a posição
     motor_pair.move_tank(motor_pair.PAIR_1,velBase,velBase)
     await runloop.sleep_ms(300)
@@ -305,14 +323,14 @@ async def darAVolta(direcao: int):
         motor_pair.move_tank(motor_pair.PAIR_1,175,450)
         await runloop.sleep_ms(100)
         #até ver preto
-        await runloop.until(lambda: ehPreto(sensorE) or ehPreto(sensorD) or verSeVirou(-170))
+        await runloop.until(lambda: ehPreto(sensorE) or ehPreto(sensorD) or verSeVirou(-178))
         motion_sensor.reset_yaw(0)
         #vai um pouco pra frente para ajustar a posição
         motor_pair.move_tank(motor_pair.PAIR_1,velBase,velBase)
         await runloop.sleep_ms(500)
         #gira  para a esquerda até que o robô alcance a linha
         motor_pair.move_tank(motor_pair.PAIR_1,velBase,-velBase)
-        await runloop.until(lambda: verSeVirou(90) or ehPreto(sensorD))
+        await runloop.until(lambda: verSeVirou(83) or ehPreto(sensorD))
         motor_pair.move_tank(motor_pair.PAIR_1,-velBase,velBase)
         await runloop.sleep_ms(100)
 
@@ -321,14 +339,14 @@ async def darAVolta(direcao: int):
         motor_pair.move_tank(motor_pair.PAIR_1,450,175)
         await runloop.sleep_ms(100)
         #até ver preto
-        await runloop.until(lambda: ehPreto(sensorD) or ehPreto(sensorE) or verSeVirou(170))
+        await runloop.until(lambda: ehPreto(sensorD) or ehPreto(sensorE) or verSeVirou(178))
         motion_sensor.reset_yaw(0)
         #vai um pouco pra frente pra ajustar a posição
         motor_pair.move_tank(motor_pair.PAIR_1,velBase,velBase)
         await runloop.sleep_ms(500)
         #gira para a direita até que o robô alcance a linha
         motor_pair.move_tank(motor_pair.PAIR_1,-velBase,velBase)
-        await runloop.until(lambda: verSeVirou(-90) or ehPreto(sensorE))
+        await runloop.until(lambda: verSeVirou(-83) or ehPreto(sensorE))
         motor_pair.move_tank(motor_pair.PAIR_1,velBase,-velBase)
         await runloop.sleep_ms(100)
 
@@ -337,6 +355,7 @@ async def darAVolta(direcao: int):
     return
 
 async def becoSemSaida():
+    distance_sensor.show(ultrassonico,[100]*4)
     motion_sensor.reset_yaw(0)
     await runloop.sleep_ms(10)
     motor_pair.move_tank(motor_pair.PAIR_1,velBase,-velBase)
@@ -349,6 +368,7 @@ async def becoSemSaida():
 
 #Função de Intersecção à Direita
 async def virarADireita():
+    darSeta(pelaDireita)
     await motor_pair.move_tank_for_time(motor_pair.PAIR_1,velBase,velBase,300)
     motion_sensor.reset_yaw(0)
     await runloop.sleep_ms(10)
@@ -362,6 +382,7 @@ async def virarADireita():
 
 #Função de Intersecção à Esquerda
 async def virarAEsquerda():
+    darSeta(pelaEsquerda)
     await motor_pair.move_tank_for_time(motor_pair.PAIR_1,velBase,velBase,300)
     motion_sensor.reset_yaw(0)
     await runloop.sleep_ms(10)
@@ -372,6 +393,10 @@ async def virarAEsquerda():
     await runloop.until(lambda: refl(sensorD) == refl(sensorE))
     seguirLinha()
     return
+
+def darSeta(direcao: int):
+    distance_sensor.show(ultrassonico,[50+50*direcao,50-50*direcao,50+50*direcao,50-50*direcao])
+    sound.beep(800)
 
 #PARTE MAIS IMPORTANTE DO CÓDIGO !!!
 runloop.run(main())
